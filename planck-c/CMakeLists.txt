@@ -14,6 +14,8 @@ set(SOURCE_FILES
     bundle_inflate.h
     clock.c
     clock.h
+    deps.c
+    deps.h
     edn.c
     edn.h
     engine.c
