@@ -19,6 +19,7 @@
 #include "theme.h"
 #include "tasks.h"
 #include "clock.h"
+#include "deps.h"
 
 void ignore_sigpipe() {
     struct sigaction sa;
@@ -575,6 +576,12 @@ int main(int argc, char **argv) {
 
     if (config.num_src_paths == 0) {
         char *classpath = getenv("PLANCK_CLASSPATH");
+
+        if (!classpath) {
+            classpath = get_deps_classpath();
+            fprintf(stderr, "%s", classpath);
+        }
+
         if (classpath) {
             init_classpath(classpath);
         }

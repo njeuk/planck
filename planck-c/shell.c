@@ -13,6 +13,7 @@
 #include "jsc_utils.h"
 #include "tasks.h"
 #include "io.h"
+#include "shell.h"
 
 static char **cmd(JSContextRef ctx, const JSObjectRef array) {
     int argc = array_get_count(ctx, array);
@@ -64,12 +65,6 @@ static void preopen(int old, int new) {
     dup2(old, new);
     close(old);
 }
-
-struct SystemResult {
-    int status;
-    char *stdout;
-    char *stderr;
-};
 
 static JSObjectRef create_shell_result(JSContextRef ctx, int status, char *out, char *err) {
     JSValueRef arguments[3];
@@ -290,35 +285,32 @@ static void *thread_proc(void *params) {
     return (void *) wait_for_child((struct ThreadParams *) params);
 }
 
-static JSValueRef system_call(JSContextRef ctx, char **cmd, char *in_str, char **env, char *dir, int cb_idx) {
-    struct SystemResult result = {0, NULL, NULL};
-    struct SystemResult *res = &result;
-
+static int system_call(char **cmd, char *in_str, char **env, char *dir, int cb_idx, struct SystemResult *res) {
     int err_rv;
     int in[2];
     err_rv = pipe(in);
     if (err_rv) {
         engine_perror("planck.shell setting up in pipe");
-        return create_shell_result(ctx, EX_OSERR, "", "");
+        return 1;
     }
     int out[2];
     err_rv = pipe(out);
     if (err_rv) {
         engine_perror("planck.shell setting up out pipe");
-        return create_shell_result(ctx, EX_OSERR, "", "");
+        return 1;
     }
     int err[2];
     err_rv = pipe(err);
     if (err_rv) {
         engine_perror("planck.shell setting up err pipe");
-        return create_shell_result(ctx, EX_OSERR, "", "");
+        return 1;
     }
 
     pid_t pid;
     pid = fork();
     if (pid == -1) {
         engine_perror("planck.shell forking subprocess");
-        return create_shell_result(ctx, EX_OSERR, "", "");
+        return 1;
     } else if (pid == 0) {
         if (dir) {
             if (chdir(dir) == -1) {
@@ -353,7 +345,7 @@ static JSValueRef system_call(JSContextRef ctx, char **cmd, char *in_str, char *
             close(in[1]);
 
             params = malloc(sizeof(struct ThreadParams));
-            params->res = result;
+            params->res = *res;
             params->errpipe = err[0];
             params->outpipe = in[0];
             params->inpipe = out[1];
@@ -362,7 +354,7 @@ static JSValueRef system_call(JSContextRef ctx, char **cmd, char *in_str, char *
             params->pid = pid;
             params->cb_idx = cb_idx;
             if (cb_idx == -1) {
-                res = wait_for_child(params);
+                *res = *wait_for_child(params);
             } else {
                 int err = signal_task_started();
                 if (err) {
@@ -388,13 +380,32 @@ static JSValueRef system_call(JSContextRef ctx, char **cmd, char *in_str, char *
         }
         free(dir);
 
-        if (cb_idx != -1) {
-            return JSValueMakeNull(ctx);
-        } else {
-            JSValueRef rv = (JSValueRef) result_to_object_ref(ctx, res);
+        if (cb_idx == -1) {
             free(params);
-            return rv;
         }
+        return 0;
+    }
+}
+
+int system_call2(char **cmd, char *in_str, char **env, char *dir, int cb_idx, struct SystemResult *res) {
+    return system_call(cmd, in_str, env, dir, cb_idx, res);
+}
+
+static JSValueRef wrapped_system_call(JSContextRef ctx, char **cmd, char *in_str, char **env, char *dir, int cb_idx) {
+    struct SystemResult result = {0, NULL, NULL};
+    struct SystemResult *res = &result;
+
+    int err = system_call(cmd, in_str, env, dir, cb_idx, res);
+
+    if (err) {
+        return create_shell_result(ctx, EX_OSERR, "", "");
+    }
+
+    if (cb_idx != -1) {
+        return JSValueMakeNull(ctx);
+    } else {
+        JSValueRef rv = (JSValueRef) result_to_object_ref(ctx, res);
+        return rv;
     }
 }
 
@@ -419,7 +430,7 @@ JSValueRef function_shellexec(JSContextRef ctx, JSObjectRef function, JSObjectRe
             if (!JSValueIsNull(ctx, args[6]) && JSValueIsNumber(ctx, args[6])) {
                 callback_idx = (int) JSValueToNumber(ctx, args[6], NULL);
             }
-            return system_call(ctx, command, in_str, environment, dir, callback_idx);
+            return wrapped_system_call(ctx, command, in_str, environment, dir, callback_idx);
         }
     }
     return JSValueMakeNull(ctx);
