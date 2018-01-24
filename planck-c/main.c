@@ -579,7 +579,6 @@ int main(int argc, char **argv) {
 
         if (!classpath) {
             classpath = get_deps_classpath();
-            fprintf(stderr, "%s", classpath);
         }
 
         if (classpath) {

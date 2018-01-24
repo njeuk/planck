@@ -285,7 +285,7 @@ static void *thread_proc(void *params) {
     return (void *) wait_for_child((struct ThreadParams *) params);
 }
 
-static int system_call(char **cmd, char *in_str, char **env, char *dir, int cb_idx, struct SystemResult *res) {
+int system_call(char **cmd, char *in_str, char **env, char *dir, int cb_idx, struct SystemResult *res) {
     int err_rv;
     int in[2];
     err_rv = pipe(in);
@@ -385,10 +385,6 @@ static int system_call(char **cmd, char *in_str, char **env, char *dir, int cb_i
         }
         return 0;
     }
-}
-
-int system_call2(char **cmd, char *in_str, char **env, char *dir, int cb_idx, struct SystemResult *res) {
-    return system_call(cmd, in_str, env, dir, cb_idx, res);
 }
 
 static JSValueRef wrapped_system_call(JSContextRef ctx, char **cmd, char *in_str, char **env, char *dir, int cb_idx) {

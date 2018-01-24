@@ -13,7 +13,7 @@ char* get_deps_classpath() {
     cmd[1] = strdup("-Spath");
     cmd[2] = NULL;
 
-    int err = system_call2(cmd, NULL, NULL, NULL, -1, res);
+    int err = system_call(cmd, NULL, NULL, NULL, -1, res);
 
     if (err) {
         return NULL;
